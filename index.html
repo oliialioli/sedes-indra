@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa mundial Indra</title>
+  <style>
+    :root {
+      --map-fill: #e8ecef;
+      --map-stroke: #ffffff;
+      --point: #004254;
+      --point-hover: #8661f5;
+      --point-ring: rgba(134, 97, 245, 0.18);
+      --tooltip-title: #0f1720;
+      --tooltip-link: #8661f5;
+      --tooltip-border: rgba(0, 66, 84, 0.08);
+      --tooltip-shadow: 0 18px 40px rgba(0, 39, 51, 0.14);
+      --surface: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .indra-map {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .map-shell {
+      position: relative;
+      width: 100%;
+      min-height: 620px;
+      background:
+        radial-gradient(circle at 18% 72%, rgba(134, 97, 245, 0.09) 0 9%, transparent 28%),
+        radial-gradient(circle at 82% 22%, rgba(0, 66, 84, 0.08) 0 10%, transparent 30%),
+        linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+      border-radius: 28px;
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 620px;
+    }
+
+    .country-shape {
+      fill: var(--map-fill);
+      stroke: var(--map-stroke);
+      stroke-width: 0.85;
+    }
+
+    .marker {
+      fill: var(--point);
+      stroke: #ffffff;
+      stroke-width: 2;
+      cursor: default;
+      transition: fill 0.2s ease, r 0.2s ease, filter 0.2s ease;
+      pointer-events: none;
+    }
+
+    .marker.marker--clickable {
+      cursor: pointer;
+    }
+
+    .marker-hit {
+      fill: transparent;
+      cursor: default;
+    }
+
+    .marker-hit.marker-hit--clickable {
+      cursor: pointer;
+    }
+
+    .tooltip {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: translate(-50%, calc(-100% - 8px));
+      min-width: 184px;
+      max-width: 230px;
+      padding: 14px 16px 13px;
+      background: var(--surface);
+      border: 1px solid var(--tooltip-border);
+      border-radius: 18px;
+      box-shadow: var(--tooltip-shadow);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s ease, visibility 0.18s ease, transform 0.18s ease;
+      z-index: 20;
+    }
+
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -7px;
+      width: 14px;
+      height: 14px;
+      background: var(--surface);
+      border-right: 1px solid var(--tooltip-border);
+      border-bottom: 1px solid var(--tooltip-border);
+      transform: translateX(-50%) rotate(45deg);
+    }
+
+    .tooltip.is-visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .tooltip__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #5f6b73;
+    }
+
+    .tooltip__eyebrow::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--point);
+    }
+
+    .tooltip__title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--tooltip-title);
+    }
+
+    .tooltip__cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      text-decoration: none;
+      font-size: 14px;
+      line-height: 1.25;
+      font-weight: 700;
+      color: var(--tooltip-link);
+      white-space: nowrap;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .tooltip__cta:hover {
+      opacity: 0.88;
+      transform: translateX(1px);
+    }
+
+    .tooltip__arrow {
+      font-size: 17px;
+      line-height: 1;
+      transform: translateY(-1px);
+    }
+
+    @media (max-width: 768px) {
+      .map-shell { min-height: 500px; }
+      #map { height: 500px; }
+      .tooltip {
+        min-width: 180px;
+        max-width: 220px;
+        padding: 14px 16px 13px;
+      }
+      .tooltip__title { font-size: 15px; }
+      .tooltip__cta { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <section class="indra-map">
+    <div class="map-shell">
+      <div id="map"></div>
+      <div id="tooltip" class="tooltip"></div>
+    </div>
+  </section>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script>
+    // Sustituye este link por el definitivo cuando lo tengas.
+    const SPAIN_URL = "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Espa%C3%B1a.aspx";
+
+    const countries = [
+      { code: "ES", name: "España", employees: 38034, coords: [-3.7, 40.3] },
+      { code: "BR", name: "Brasil", employees: 6510, coords: [-53.0, -10.0] },
+      { code: "CO", name: "Colombia", employees: 3975, coords: [-74.1, 4.6] },
+      { code: "PE", name: "Perú", employees: 3285, coords: [-75.0, -9.0] },
+      { code: "MX", name: "México", employees: 2886, coords: [-102.0, 23.0] },
+      { code: "CL", name: "Chile", employees: 1056, coords: [-71.0, -33.0] },
+      { code: "AR", name: "Argentina", employees: 213, coords: [-64.0, -34.0] },
+      { code: "US", name: "Estados Unidos", employees: 204, coords: [-98.0, 38.0] },
+      { code: "EC", name: "Ecuador", employees: 130, coords: [-78.5, -1.5] },
+      { code: "UY", name: "Uruguay", employees: 104, coords: [-56.0, -32.5] },
+      { code: "PA", name: "Panamá", employees: 103, coords: [-80.0, 8.7] },
+      { code: "DO", name: "República Dominicana", employees: 77, coords: [-70.2, 18.8] },
+      { code: "SV", name: "El Salvador", employees: 17, coords: [-88.9, 13.8] },
+      { code: "GT", name: "Guatemala", employees: 7, coords: [-90.4, 15.7] },
+      { code: "CA", name: "Canadá", employees: 3, coords: [-106.0, 56.0] },
+      { code: "CR", name: "Costa Rica", employees: 3, coords: [-84.0, 9.8] },
+      { code: "BO", name: "Bolivia", employees: 1, coords: [-64.7, -16.7] },
+      { code: "IT", name: "Italia", employees: 1925, coords: [12.5, 42.8] },
+      { code: "PT", name: "Portugal", employees: 716, coords: [-8.0, 39.7] },
+      { code: "GB", name: "Reino Unido", employees: 384, coords: [-2.8, 54.0] },
+      { code: "NO", name: "Noruega", employees: 306, coords: [9.0, 61.2] },
+      { code: "DE", name: "Alemania", employees: 183, coords: [10.4, 51.1] },
+      { code: "RO", name: "Rumanía", employees: 109, coords: [24.9, 45.9] },
+      { code: "LV", name: "Letonia", employees: 77, coords: [24.6, 56.9] },
+      { code: "SK", name: "Eslovaquia", employees: 70, coords: [19.5, 48.7] },
+      { code: "MD", name: "Moldavia", employees: 24, coords: [28.8, 47.0] },
+      { code: "IE", name: "Irlanda", employees: 22, coords: [-8.0, 53.2] },
+      { code: "FR", name: "Francia", employees: 14, coords: [2.2, 46.2] },
+      { code: "BE", name: "Bélgica", employees: 10, coords: [4.7, 50.8] },
+      { code: "PL", name: "Polonia", employees: 7, coords: [19.1, 52.1] },
+      { code: "BG", name: "Bulgaria", employees: 2, coords: [25.4, 42.7] },
+      { code: "NL", name: "Países Bajos", employees: 2, coords: [5.3, 52.3] },
+      { code: "PH", name: "Filipinas", employees: 1623, coords: [121.8, 12.9] },
+      { code: "SA", name: "Arabia Saudita", employees: 82, coords: [45.0, 24.0] },
+      { code: "KE", name: "Kenia", employees: 75, coords: [37.9, 0.2] },
+      { code: "AU", name: "Australia", employees: 73, coords: [134.0, -25.0] },
+      { code: "AE", name: "Emiratos Árabes Unidos", employees: 46, coords: [54.3, 24.4] },
+      { code: "IN", name: "India", employees: 38, coords: [78.9, 22.8] },
+      { code: "OM", name: "Omán", employees: 29, coords: [57.0, 21.5] },
+      { code: "CN", name: "China", employees: 20, coords: [104.0, 35.8] },
+      { code: "DZ", name: "Argelia", employees: 19, coords: [2.6, 28.0] },
+      { code: "ID", name: "Indonesia", employees: 13, coords: [117.0, -2.5] },
+      { code: "TW", name: "Taiwán", employees: 12, coords: [121.0, 23.7] },
+      { code: "MA", name: "Marruecos", employees: 11, coords: [-6.0, 31.8] },
+      { code: "BH", name: "Bahréin", employees: 10, coords: [50.55, 26.0] },
+      { code: "AO", name: "Angola", employees: 9, coords: [17.9, -12.3] },
+      { code: "MY", name: "Malasia", employees: 8, coords: [102.0, 4.0] },
+      { code: "KR", name: "Corea del Sur", employees: 8, coords: [127.8, 36.3] },
+      { code: "MZ", name: "Mozambique", employees: 6, coords: [35.5, -18.7] },
+      { code: "TR", name: "Turquía", employees: 5, coords: [35.0, 39.0] },
+      { code: "VN", name: "Vietnam", employees: 4, coords: [108.0, 16.0] },
+      { code: "TH", name: "Tailandia", employees: 3, coords: [101.0, 15.0] },
+      { code: "IL", name: "Israel", employees: 3, coords: [35.0, 31.4] },
+      { code: "KZ", name: "Kazajistán", employees: null, coords: [67.5, 48.0] }
+    ];
+
+    const tooltipEl = document.getElementById("tooltip");
+    const mapContainer = document.getElementById("map");
+
+    let hideTooltipTimeout = null;
+    let activeCountryCode = null;
+    let markerSelection = null;
+
+    function getTooltipHTML(country) {
+      if (country.code === "ES") {
+        return `
+          <div class="tooltip__eyebrow">Sede Indra</div>
+          <h3 class="tooltip__title">${country.name}</h3>
+          <a class="tooltip__cta" href="${SPAIN_URL}" target="_blank" rel="noopener noreferrer">
+            Consultar el tiempo <span class="tooltip__arrow">→</span>
+          </a>
+        `;
+      }
+
+      return `<div class="tooltip__eyebrow">Sede Indra</div><h3 class="tooltip__title">${country.name}</h3>`;
+    }
+
+    function clearHideTooltipTimeout() {
+      if (hideTooltipTimeout) {
+        clearTimeout(hideTooltipTimeout);
+        hideTooltipTimeout = null;
+      }
+    }
+
+    function setMarkerState(activeCode) {
+      if (!markerSelection) return;
+
+      markerSelection
+        .attr("fill", d => d.code === activeCode ? "#8661f5" : "#004254")
+        .attr("r", d => d.code === activeCode ? 6.8 : 5.7)
+        .style("filter", d => d.code === activeCode ? "drop-shadow(0 0 0.45rem rgba(134,97,245,0.4))" : "none");
+    }
+
+    function moveTooltipTo(country) {
+      const bounds = mapContainer.getBoundingClientRect();
+      const [rawX, rawY] = projection(country.coords);
+
+      const tooltipWidth = tooltipEl.offsetWidth || 220;
+      const tooltipHeight = tooltipEl.offsetHeight || 88;
+      const horizontalPadding = 18;
+      const upperSafeArea = tooltipHeight + 22;
+
+      const x = Math.max(
+        horizontalPadding + tooltipWidth / 2,
+        Math.min(rawX, bounds.width - horizontalPadding - tooltipWidth / 2)
+      );
+
+      const y = Math.max(upperSafeArea, rawY - 2);
+
+      tooltipEl.style.left = `${x}px`;
+      tooltipEl.style.top = `${y}px`;
+    }
+
+    function showTooltip(country) {
+      clearHideTooltipTimeout();
+      activeCountryCode = country.code;
+      tooltipEl.innerHTML = getTooltipHTML(country);
+      tooltipEl.classList.add("is-visible");
+      moveTooltipTo(country);
+      setMarkerState(country.code);
+    }
+
+    function hideTooltip() {
+      activeCountryCode = null;
+      tooltipEl.classList.remove("is-visible");
+      setMarkerState(null);
+    }
+
+    function scheduleHideTooltip() {
+      clearHideTooltipTimeout();
+      hideTooltipTimeout = setTimeout(() => {
+        hideTooltip();
+      }, 520);
+    }
+
+    tooltipEl.addEventListener("mouseenter", () => {
+      clearHideTooltipTimeout();
+    });
+
+    tooltipEl.addEventListener("mouseleave", () => {
+      scheduleHideTooltip();
+    });
+
+    document.addEventListener("click", (event) => {
+      const clickedInsideTooltip = tooltipEl.contains(event.target);
+      const clickedMarker = event.target.closest && event.target.closest("svg circle");
+      if (!clickedInsideTooltip && !clickedMarker) {
+        hideTooltip();
+      }
+    });
+
+    let projection;
+
+    async function drawMap() {
+      const width = mapContainer.clientWidth || 1200;
+      const height = mapContainer.clientHeight || 620;
+
+      const svg = d3
+        .select("#map")
+        .append("svg")
+        .attr("viewBox", `0 0 ${width} ${height}`)
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .attr("preserveAspectRatio", "xMidYMid meet");
+
+      projection = d3.geoNaturalEarth1();
+      const path = d3.geoPath(projection);
+
+      const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
+      const countriesGeo = topojson.feature(world, world.objects.countries);
+      projection.fitExtent([[16, 20], [width - 16, height - 20]], countriesGeo);
+
+      svg
+        .append("g")
+        .selectAll("path")
+        .data(countriesGeo.features)
+        .join("path")
+        .attr("class", "country-shape")
+        .attr("d", path);
+
+      const markerGroup = svg.append("g");
+
+      markerGroup
+        .selectAll("circle.marker-hit")
+        .data(countries)
+        .join("circle")
+        .attr("class", d => `marker-hit ${d.code === "ES" ? "marker-hit--clickable" : ""}`)
+        .attr("r", 16)
+        .attr("cx", d => projection(d.coords)[0])
+        .attr("cy", d => projection(d.coords)[1])
+        .attr("tabindex", 0)
+        .attr("role", d => d.code === "ES" ? "button" : "img")
+        .attr("aria-label", d => d.code === "ES" ? `${d.name}. Consultar el tiempo.` : d.name)
+        .on("mouseenter", function(event, d) {
+          showTooltip(d);
+        })
+        .on("mouseleave", function() {
+          scheduleHideTooltip();
+        })
+        .on("focus", function(event, d) {
+          showTooltip(d);
+        })
+        .on("blur", function() {
+          scheduleHideTooltip();
+        })
+        .on("click", function(event, d) {
+          event.stopPropagation();
+          showTooltip(d);
+        })
+        .on("keydown", function(event, d) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            showTooltip(d);
+          }
+        });
+
+      markerSelection = markerGroup
+        .selectAll("circle.marker")
+        .data(countries)
+        .join("circle")
+        .attr("class", d => `marker ${d.code === "ES" ? "marker--clickable" : ""}`)
+        .attr("r", 5.7)
+        .attr("cx", d => projection(d.coords)[0])
+        .attr("cy", d => projection(d.coords)[1]);
+    }
+
+    drawMap().catch((error) => {
+      console.error("Error cargando el mapa:", error);
+    });
+  </script>
+</body>
+</html>
