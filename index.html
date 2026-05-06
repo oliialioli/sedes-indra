@@ -37,7 +37,7 @@
       position: relative;
       width: 100%;
       min-height: 620px;
-      background: transparent;
+      background: #ffffff;
       border-radius: 28px;
       overflow: hidden;
     }
@@ -194,7 +194,15 @@
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
   <script>
     // Sustituye este link por el definitivo cuando lo tengas.
-    const SPAIN_URL = "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Espa%C3%B1a.aspx";
+    const COUNTRY_LINKS = {
+      ES: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Espa%C3%B1a.aspx",
+      IT: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Italia.aspx",
+      GB: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Reino%20Unido.aspx",
+      DE: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Alemania.aspx",
+      NO: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Noruega.aspx",
+      PT: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Portugal.aspx",
+      PL: "https://indra365.sharepoint.com/sites/RRHH_IndraGroup/SitePages/Polonia.aspx"
+    };
 
     const countries = [
       { code: "ES", name: "España", employees: 38034, coords: [-3.7, 40.3] },
@@ -261,17 +269,16 @@
     let markerSelection = null;
 
     function getTooltipHTML(country) {
-      if (country.code === "ES") {
-        return `
-          <div class="tooltip__eyebrow">Sede Indra</div>
-          <h3 class="tooltip__title">${country.name}</h3>
-          <a class="tooltip__cta" href="${SPAIN_URL}" target="_blank" rel="noopener noreferrer">
-            Consultar el tiempo <span class="tooltip__arrow">→</span>
-          </a>
-        `;
-      }
+      const countryUrl = COUNTRY_LINKS[country.code];
+      const cta = countryUrl
+        ? `<a class="tooltip__cta" href="${countryUrl}" target="_blank" rel="noopener noreferrer">Consultar el tiempo <span class="tooltip__arrow">→</span></a>`
+        : "";
 
-      return `<div class="tooltip__eyebrow">Sede Indra</div><h3 class="tooltip__title">${country.name}</h3>`;
+      return `
+        <div class="tooltip__eyebrow">Sede Indra</div>
+        <h3 class="tooltip__title">${country.name}</h3>
+        ${cta}
+      `;
     }
 
     function clearHideTooltipTimeout() {
@@ -388,8 +395,8 @@
         .attr("cx", d => projection(d.coords)[0])
         .attr("cy", d => projection(d.coords)[1])
         .attr("tabindex", 0)
-        .attr("role", d => d.code === "ES" ? "button" : "img")
-        .attr("aria-label", d => d.code === "ES" ? `${d.name}. Consultar el tiempo.` : d.name)
+        .attr("role", d => COUNTRY_LINKS[d.code] ? "button" : "img")
+        .attr("aria-label", d => COUNTRY_LINKS[d.code] ? `${d.name}. Consultar el tiempo.` : d.name)
         .on("mouseenter", function(event, d) {
           showTooltip(d);
         })
